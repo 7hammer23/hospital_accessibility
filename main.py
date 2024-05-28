@@ -361,9 +361,9 @@ for I, R in china.iloc[::-1].iterrows():
         region = get_pop_in_gdf(region, rn)
     else:
         region = gpd.read_file(f"./data/tmp/{rn}.geojson")
-        print_and_log(f"{rn}范围内人口已存在")
+        print_and_log(f"{rn} pop already exists")
     grids = gpd.read_file(f"./data/tmp/{rn}.geojson")
-    print_and_log(f"划分格网用时: {time.time()-time1} s")
+    print_and_log(f"pop finished, in {time.time()-time1} s.")
 
     # preprocess the road network
     if not os.path.exists(f"./data/tmp/{rn}_roads.osm.pbf.fmi"):
