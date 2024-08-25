@@ -26,9 +26,9 @@ S1_batch_size = 70
 S2_batch_size = 200
 
 
-# cost in osm
+# cost(time) in osm
 def try4distance(start, end):
-    base = "http://localhost:8081/dijkstra"
+    base = "GET_COST_IN_OSM"
     headers = {"Content-Type": "application/json"}
     data = {
         "type": "FeatureCollection",
@@ -46,15 +46,18 @@ def try4distance(start, end):
 
 # ---GA2SFCA---
 
-# ---Gussian---
-def gussian_w(t):
-    if t > 60:
+# ---Gussian(with different thresholds)---
+def gussian_w(t, thresholds):
+    # if t > 60:
+    # return (math.exp(-1 / 2 * (t / 60) ** 2) - math.exp(-1 / 2)) / (1 - math.exp(-1 / 2))
+    if t > thresholds:
         return 0
-    return (math.exp(-1 / 2 * (t / 60) ** 2) - math.exp(-1 / 2)) / (1 - math.exp(-1 / 2))
+    return (math.exp(-1 / 2 * (t / thresholds) ** 2) - math.exp(-1 / 2)) / (1 - math.exp(-1 / 2))
+
 
 # S1, process a grid
 @ray.remote
-def process_grid(grid, start):
+def process_grid(grid, start, thresholds):
     centroid = grid.geometry.centroid
     end = [centroid.x, centroid.y]
     cost = try4distance(start, end)
@@ -64,7 +67,8 @@ def process_grid(grid, start):
 
     t = grid["sum"]
     t = 0 if math.isnan(t) else t
-    PW = 0 if t == 0 else t * gussian_w(cost)
+
+    PW = 0 if t == 0 else t * gussian_w(cost, thresholds)
     return 0 if PW == 0 else PW
 
 # S1, process a hospital
@@ -74,6 +78,7 @@ def process_hospital_i(i, hospital, length):
     S = hospital["beds"]
     S = 5 if math.isnan(S) else S
     start = [hospital["lng"], hospital["lat"]]
+    thresholds = 60 if hospital["grade"].startswith("Level3") else 45 if hospital["grade"].startswith("Level2") else 30
 
     # find the nearest grids
     global grids_id
@@ -82,7 +87,7 @@ def process_hospital_i(i, hospital, length):
     filtered_grids = grids[grids.within(buffer)]
 
     result_handles = [
-        process_grid.remote(filtered_grids.iloc[j], start)
+        process_grid.remote(filtered_grids.iloc[j], start, thresholds)
         for j in range(len(filtered_grids))
     ]
     for handle in result_handles:
@@ -111,13 +116,16 @@ def reindex_S1():
 
 # S2, process a hospital
 @ray.remote
-def process_hospital(hospital, start):
+def process_hospital(hospital, start, thresholds):
     end = [hospital["lng"], hospital["lat"]]
     cost = try4distance(start, end)
     if cost == "no path found":
         return 0
     cost = float(cost)
-    RW = hospital["R"] * gussian_w(cost)
+
+    thresholds = 60 if hospital["grade"].startswith("Level3") else 45 if hospital["grade"].startswith("Level2") else 30
+
+    RW = hospital["R"] * gussian_w(cost, thresholds)
     return 0 if RW == 0 else RW
 
 # S2, process a grid
